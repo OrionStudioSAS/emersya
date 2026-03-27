@@ -96,27 +96,44 @@ function parseM2(raw) {
   return parseFloat(match[0].replace(",", "."));
 }
 
+/**
+ * Calcule la surface (width × depth) depuis les sous-parts de "Dimensions".
+ * Retourne null si les valeurs sont absentes ou non numériques.
+ */
+function getSurface(replayRawParts) {
+  const dimensionsPart = findPartByTitle(replayRawParts, "dimensions");
+  const dimParts = dimensionsPart?.parts ?? [];
+
+  const width = parseFloat(findPartByTitle(dimParts, "width")?.reference?.value ?? NaN);
+  const depth = parseFloat(findPartByTitle(dimParts, "depth")?.reference?.value ?? NaN);
+
+  if (isNaN(width) || isNaN(depth)) return null;
+  return width * depth;
+}
+
 function computeReserve(replayRawParts) {
   // 1. Le champ "Storage" doit exister, sinon pas de réserve
   const storagePart = findPartByTitle(replayRawParts, "storage");
   if (!storagePart) return "pas de réserve";
 
-  // 2. Lire width et depth dans les sous-parts de "Dimensions"
-  const dimensionsPart = findPartByTitle(replayRawParts, "dimensions");
-  const dimParts = dimensionsPart?.parts ?? [];
-
-  const width  = parseFloat(findPartByTitle(dimParts, "width")?.reference?.value  ?? NaN);
-  const depth  = parseFloat(findPartByTitle(dimParts, "depth")?.reference?.value  ?? NaN);
-
-  if (isNaN(width) || isNaN(depth)) return "pas de réserve";
-
-  // 3. Surface = width × depth, puis règles de réserve
-  const m2 = width * depth;
+  // 2. Surface = width × depth, puis règles de réserve
+  const m2 = getSurface(replayRawParts);
+  if (m2 === null) return "pas de réserve";
 
   if (m2 >= 36) return "3m2";
   if (m2 >= 26) return "2m2";
   if (m2 >= 12) return "1m2";
   return "pas de réserve"; // 9 à 11 m2
+}
+
+function buildEnseigneReserve(replayRawParts) {
+  const reserve = computeReserve(replayRawParts);
+  if (reserve === "pas de réserve") return null;
+
+  const m2 = getSurface(replayRawParts);
+  if (m2 === null || m2 <= 25) return null;
+
+  return "1000x1000";
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -301,6 +318,7 @@ function buildCleanPayload({ basket }) {
     parts: replayRawParts.map(cleanReplayPart),
     ...buildAmcoLot(replayRawParts),
     réserve: computeReserve(replayRawParts),
+    "enseigne reserve": buildEnseigneReserve(replayRawParts),
     moquette: buildMoquette(replayRawParts),
     empreinte: buildEmpreinte(replayRawParts),
     "coton cloison": buildCotonCloison(replayRawParts),
