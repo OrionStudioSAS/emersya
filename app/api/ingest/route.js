@@ -122,24 +122,24 @@ function computeReserve(replayRawParts) {
 
 // ─── Lot AMCO ────────────────────────────────────────────────────────────────
 const AMCO_PART_NAMES = new Set([
-  "BORNE ECRAN 46'' TACTILE-111",
-  "CAISSON NUMERIQUE AVEC DALLES LED _H-112",
-  "CAISSON NUMERIQUE AVEC DALLES LED-113",
-  "COMPTOIR NUMERIQUE AVEC DALLES LED-114",
-  "TRIPLETTE.003-115",
-  "POIDUM BLANC 50x50x50cm HT-116",
-  "POIDUM BLANC 50x50x75cm HT-117",
-  "POIDUM BLANC 50x50x100cm HT-118",
-  "POIDUM NOIR 50x50x50cm HT-119",
-  "POIDUM NOIR 50x50x75cm HT-120",
-  "POIDUM NOIR 50x50x100cm HT-121",
-  "MEUBLE BAS DE RANGEMENT-122",
-  "TV 32''.fbx-123",
-  "TV 43''.fbx-124",
-  "TV 55''.fbx-125",
-  "TV 65''.fbx-126",
-  "ENSEIGNE HAUTE 1x1x1m HT.fbx-127",
-  "ENSEIGNE HAUTE 2x2x1m HT.fbx-128"
+  "BORNE ECRAN 46'' TACTILE",
+  "CAISSON NUMERIQUE AVEC DALLES LED _H",
+  "CAISSON NUMERIQUE AVEC DALLES LED",
+  "COMPTOIR NUMERIQUE AVEC DALLES LED",
+  "TRIPLETTE.003",
+  "POIDUM BLANC 50x50x50cm HT",
+  "POIDUM BLANC 50x50x75cm HT",
+  "POIDUM BLANC 50x50x100cm HT",
+  "POIDUM NOIR 50x50x50cm HT",
+  "POIDUM NOIR 50x50x75cm HT",
+  "POIDUM NOIR 50x50x100cm HT",
+  "MEUBLE BAS DE RANGEMENT",
+  "TV 32''.fbx",
+  "TV 43''.fbx",
+  "TV 55''.fbx",
+  "TV 65''.fbx",
+  "ENSEIGNE HAUTE 1x1x1m HT.fbx",
+  "ENSEIGNE HAUTE 2x2x1m HT.fbx"
 ]);
 
 /**
@@ -149,7 +149,7 @@ const AMCO_PART_NAMES = new Set([
 function collectAmcoParts(parts = []) {
   const found = [];
   for (const part of parts) {
-    if (part.name && AMCO_PART_NAMES.has(part.name)) {
+    if (part.name && AMCO_PART_NAMES.has(part.title)) {
       found.push(part);
     }
     if (Array.isArray(part.parts) && part.parts.length > 0) {
@@ -246,19 +246,18 @@ function buildPlante(replayRawParts) {
 }
 
 const MOBILIER_STANDING_NAMES = new Set([
-  "TABOURET_SIAE-91",
-  "TABOURET_SIAE-92",
-  "TABOURET_SIAE-93",
-  "TABOURET_SIAE-94",
-  "TABLE_HAUTE-95",
-  "PORTE_DOCUMENTS-96",
-  "CORBEILLE-97"
+  "TABOURET_SIAE",
+  "TABLE_HAUTE",
+  "PORTE_DOCUMENTS",
+  "CORBEILLE"
 ]);
 
 function buildMobilierStanding(replayRawParts) {
   function hasAny(parts) {
     for (const part of parts) {
-      if (part.name && MOBILIER_STANDING_NAMES.has(part.name)) return true;
+      const matchesPrefix = part.name && MOBILIER_EXT_PREFIXES.some(p => part.name.startsWith(p));
+      const priceIsZero = (part.computedPrice?.inclTax ?? 0) === 0;
+      if (matchesPrefix && priceIsZero) return true;
       if (Array.isArray(part.parts) && hasAny(part.parts)) return true;
     }
     return false;
