@@ -69,6 +69,250 @@ async function getBasket({ host, sessionId, basketCode }) {
   return data;
 }
 
+// ─── Réserve ─────────────────────────────────────────────────────────────────
+/**
+ * Cherche récursivement la première part dont le title correspond à `titleTarget`
+ * (comparaison insensible à la casse).
+ */
+function findPartByTitle(parts = [], titleTarget) {
+  for (const part of parts) {
+    if (part.title?.toLowerCase() === titleTarget.toLowerCase()) return part;
+    if (Array.isArray(part.parts) && part.parts.length > 0) {
+      const found = findPartByTitle(part.parts, titleTarget);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * Extrait la première valeur numérique trouvée dans une chaîne.
+ * Ex: "20 m2" → 20 | "25.5" → 25.5 | null si non trouvée.
+ */
+function parseM2(raw) {
+  if (raw == null) return null;
+  const match = String(raw).match(/[\d]+(?:[.,]\d+)?/);
+  if (!match) return null;
+  return parseFloat(match[0].replace(",", "."));
+}
+
+function computeReserve(replayRawParts) {
+  // 1. Le champ "Storage" doit exister, sinon pas de réserve
+  const storagePart = findPartByTitle(replayRawParts, "storage");
+  if (!storagePart) return "pas de réserve";
+
+  // 2. Lire width et depth dans les sous-parts de "Dimensions"
+  const dimensionsPart = findPartByTitle(replayRawParts, "dimensions");
+  const dimParts = dimensionsPart?.parts ?? [];
+
+  const width  = parseFloat(findPartByTitle(dimParts, "width")?.reference?.value  ?? NaN);
+  const depth  = parseFloat(findPartByTitle(dimParts, "depth")?.reference?.value  ?? NaN);
+
+  if (isNaN(width) || isNaN(depth)) return "pas de réserve";
+
+  // 3. Surface = width × depth, puis règles de réserve
+  const m2 = width * depth;
+
+  if (m2 >= 36) return "3m2";
+  if (m2 >= 26) return "2m2";
+  if (m2 >= 12) return "1m2";
+  return "pas de réserve"; // 9 à 11 m2
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─── Lot AMCO ────────────────────────────────────────────────────────────────
+const AMCO_PART_NAMES = new Set([
+  "BORNE ECRAN 46'' TACTILE-111",
+  "CAISSON NUMERIQUE AVEC DALLES LED _H-112",
+  "CAISSON NUMERIQUE AVEC DALLES LED-113",
+  "COMPTOIR NUMERIQUE AVEC DALLES LED-114",
+  "TRIPLETTE.003-115",
+  "POIDUM BLANC 50x50x50cm HT-116",
+  "POIDUM BLANC 50x50x75cm HT-117",
+  "POIDUM BLANC 50x50x100cm HT-118",
+  "POIDUM NOIR 50x50x50cm HT-119",
+  "POIDUM NOIR 50x50x75cm HT-120",
+  "POIDUM NOIR 50x50x100cm HT-121",
+  "MEUBLE BAS DE RANGEMENT-122",
+  "TV 32''.fbx-123",
+  "TV 43''.fbx-124",
+  "TV 55''.fbx-125",
+  "TV 65''.fbx-126",
+  "ENSEIGNE HAUTE 1x1x1m HT.fbx-127",
+  "ENSEIGNE HAUTE 2x2x1m HT.fbx-128"
+]);
+
+/**
+ * Parcourt récursivement toutes les parts (et sous-parts) et retourne
+ * celles dont le `name` appartient au lot AMCO.
+ */
+function collectAmcoParts(parts = []) {
+  const found = [];
+  for (const part of parts) {
+    if (part.name && AMCO_PART_NAMES.has(part.name)) {
+      found.push(part);
+    }
+    if (Array.isArray(part.parts) && part.parts.length > 0) {
+      found.push(...collectAmcoParts(part.parts));
+    }
+  }
+  return found;
+}
+
+function buildAmcoLot(replayRawParts) {
+  const amcoParts = collectAmcoParts(replayRawParts);
+
+  const lotNames = amcoParts
+    .map(p => p.name)
+    .filter(Boolean)
+    .join(" - ");
+
+  const priceAmco = amcoParts.reduce((sum, p) => {
+    const price = p.computedPrice?.inclTax ?? 0;
+    return sum + (typeof price === "number" ? price : 0);
+  }, 0);
+
+  return {
+    "Lot AMCO": lotNames || null,
+    "Price AMCO": priceAmco
+  };
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+function cleanReplayPart(part) {
+  const opt = part.currentOption ?? null;
+  const subParts = Array.isArray(part.parts) && part.parts.length > 0
+    ? part.parts.map(cleanReplayPart)
+    : undefined;
+
+  return {
+    name: part.name ?? null,
+    title: part.title ?? null,
+    reference: part.reference?.value ?? part.reference ?? null,
+    computedPriceInclTax: part.computedPrice?.inclTax ?? null,
+    currentOption: opt
+      ? {
+          name: opt.name ?? null,
+          title: opt.title ?? null,
+          reference: opt.reference?.value ?? null,
+          priceInclTax: opt.price?.inclTax ?? null
+        }
+      : null,
+    ...(subParts ? { parts: subParts } : {})
+  };
+}
+
+function optRef(opt) {
+  return opt?.reference?.value ?? opt?.reference ?? null;
+}
+
+function buildMoquette(replayRawParts) {
+  const floorPart = findPartByTitle(replayRawParts, "floor");
+  const opt = floorPart?.currentOption ?? null;
+  if (!opt) return null;
+  return `${opt.title} - ${optRef(opt)}`;
+}
+
+function buildEmpreinte(replayRawParts) {
+  const personalizationPart = findPartByTitle(replayRawParts, "personalization");
+  const opt = personalizationPart?.currentOption ?? null;
+  if (!opt) return null;
+  return `${opt.title} - ${optRef(opt)}`;
+}
+
+function buildCotonCloison(replayRawParts) {
+  const wallPart = findPartByTitle(replayRawParts, "wall");
+  const opt = wallPart?.currentOption ?? null;
+  if (!opt) return null;
+  return `${opt.title} - ${optRef(opt)}`;
+}
+
+function buildComptoir(replayRawParts) {
+  const counterPart = findPartByTitle(replayRawParts, "counter");
+  const opt = counterPart?.currentOption ?? null;
+  if (!opt) return null;
+  return `${opt.title} - ${optRef(opt)}`;
+}
+
+function buildPlante(replayRawParts) {
+  function hasName(parts, target) {
+    for (const part of parts) {
+      if (part.name === target) return true;
+      if (Array.isArray(part.parts) && hasName(part.parts, target)) return true;
+    }
+    return false;
+  }
+  return hasName(replayRawParts, "plante-98") ? "OUI" : "PAS BESOIN";
+}
+
+const MOBILIER_STANDING_NAMES = new Set([
+  "TABOURET_SIAE-91",
+  "TABOURET_SIAE-92",
+  "TABOURET_SIAE-93",
+  "TABOURET_SIAE-94",
+  "TABLE_HAUTE-95",
+  "PORTE_DOCUMENTS-96",
+  "CORBEILLE-97"
+]);
+
+function buildMobilierStanding(replayRawParts) {
+  function hasAny(parts) {
+    for (const part of parts) {
+      if (part.name && MOBILIER_STANDING_NAMES.has(part.name)) return true;
+      if (Array.isArray(part.parts) && hasAny(part.parts)) return true;
+    }
+    return false;
+  }
+  return hasAny(replayRawParts) ? "OUI" : "PAS BESOIN";
+}
+
+const MOBILIER_EXT_PREFIXES = [
+  "TABLE_HAUTE",
+  "TABOURET_SIAE",
+  "PORTE_DOCUMENTS",
+  "CORBEILLE"
+];
+
+function buildMobilierExt(replayRawParts) {
+  function hasAny(parts) {
+    for (const part of parts) {
+      const matchesPrefix = part.name && MOBILIER_EXT_PREFIXES.some(p => part.name.startsWith(p));
+      const hasPrice = (part.computedPrice?.inclTax ?? 0) > 0;
+      if (matchesPrefix && hasPrice) return true;
+      if (Array.isArray(part.parts) && hasAny(part.parts)) return true;
+    }
+    return false;
+  }
+  return hasAny(replayRawParts) ? "OUI" : "PAS BESOIN";
+}
+
+function buildCleanPayload({ basket }) {
+  const meta = basket?.metaData ?? {};
+  const replayRawParts = meta?.replay?.basket?.products?.[0]?.parts ?? [];
+  const companyName = meta?.replay?.basket?.billingContact?.companyName ?? null;
+
+  return {
+    mondayId: meta.mondayId ?? null,
+    companyName,
+    customInstructions: meta.customInstructions ?? null,
+    storeLocation: {
+      salon: meta.storeLocation?.salon ?? null,
+      location: meta.storeLocation?.location ?? null
+    },
+    parts: replayRawParts.map(cleanReplayPart),
+    ...buildAmcoLot(replayRawParts),
+    réserve: computeReserve(replayRawParts),
+    moquette: buildMoquette(replayRawParts),
+    empreinte: buildEmpreinte(replayRawParts),
+    "coton cloison": buildCotonCloison(replayRawParts),
+    comptoir: buildComptoir(replayRawParts),
+    "tete de cloison": companyName,
+    plante: buildPlante(replayRawParts),
+    "MOBILIER STAND-ING": buildMobilierStanding(replayRawParts),
+    "MOBILIER EXT": buildMobilierExt(replayRawParts)
+  };
+}
+
 async function postToMake(makeWebhookUrl, payload) {
   const res = await fetch(makeWebhookUrl, {
     method: "POST",
@@ -126,28 +370,18 @@ export async function GET(req) {
     const result = await getBasket({ host, sessionId, basketCode });
 
     const basket = result?.resultSet?.data?.[0] ?? null;
-    const metaData = basket?.metaData ?? null;
+    const mondayId = basket?.metaData?.mondayId ?? null;
 
-    const payload = {
-      source: "emersya",
-      receivedAt: new Date().toISOString(),
-      basketCode,
-      clientIp: getClientIp(req),
-      emersya: {
-        raw: result,
-        basket,
-        metaData,
-        mondayId: metaData?.mondayId ?? null
-      }
-    };
+    const payload = buildCleanPayload({ basket });
 
     const makeRes = await postToMake(makeWebhookUrl, payload);
 
     return Response.json({
       ok: true,
       basketFound: !!basket,
-      mondayId: metaData?.mondayId ?? null,
-      make: makeRes
+      mondayId,
+      make: makeRes,
+      payload
     });
   } catch (err) {
     return Response.json(
