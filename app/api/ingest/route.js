@@ -235,14 +235,14 @@ function buildComptoir(replayRawParts) {
 }
 
 function buildPlante(replayRawParts) {
-  function hasName(parts, target) {
+  function hasTitle(parts) {
     for (const part of parts) {
-      if (part.name === target) return true;
-      if (Array.isArray(part.parts) && hasName(part.parts, target)) return true;
+      if (part.title?.toLowerCase().includes("plante")) return true;
+      if (Array.isArray(part.parts) && hasTitle(part.parts)) return true;
     }
     return false;
   }
-  return hasName(replayRawParts, "plante-98") ? "OUI" : "PAS BESOIN";
+  return hasTitle(replayRawParts) ? "OUI" : "PAS BESOIN";
 }
 
 const MOBILIER_STANDING_NAMES = new Set([
