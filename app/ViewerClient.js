@@ -13,7 +13,7 @@ export default function ViewerClient() {
 
   const iframeSrc = useMemo(() => {
     if (!preconfiguration) return null;
-    return `https://emersya.com/App/${APP_ID}?preconfiguration=${encodeURIComponent(
+    return `https://emersya.com/app/${APP_ID}?preconfiguration=${encodeURIComponent(
       preconfiguration
     )}`;
   }, [preconfiguration]);
