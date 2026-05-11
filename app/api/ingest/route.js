@@ -387,14 +387,18 @@ export async function GET(req) {
     const result = await getBasket({ host, sessionId, basketCode });
 
     const basket = result?.resultSet?.data?.[0] ?? null;
+    const mondayId = basket?.metaData?.mondayId ?? null;
 
-    const makeRes = await postToMake(makeWebhookUrl, result);
+    const payload = buildCleanPayload({ basket });
+
+    const makeRes = await postToMake(makeWebhookUrl, payload);
 
     return Response.json({
       ok: true,
       basketFound: !!basket,
+      mondayId,
       make: makeRes,
-      raw: result
+      payload
     });
   } catch (err) {
     return Response.json(
