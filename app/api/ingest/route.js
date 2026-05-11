@@ -166,7 +166,7 @@ const AMCO_PART_NAMES = new Set([
 function collectAmcoParts(parts = []) {
   const found = [];
   for (const part of parts) {
-    if (part.name && AMCO_PART_NAMES.has(part.title)) {
+    if (part.name && AMCO_PART_NAMES.has(part.reference?.value ?? part.reference)) {
       found.push(part);
     }
     if (Array.isArray(part.parts) && part.parts.length > 0) {
@@ -254,7 +254,7 @@ function buildComptoir(replayRawParts) {
 function buildPlante(replayRawParts) {
   function hasTitle(parts) {
     for (const part of parts) {
-      if (part.title?.toLowerCase().includes("plante")) return true;
+      if (part.title?.toLowerCase().includes("plant")) return true;
       if (Array.isArray(part.parts) && hasTitle(part.parts)) return true;
     }
     return false;
